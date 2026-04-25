@@ -1,0 +1,757 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Matrix Binary Suite v6.0 - Keyboard Editor</title>
+    <style>
+        :root { --matrix-green: #00FF00; --matrix-dark: #263238; --highlight-red: #FF0000; }
+        body { font-family: 'Segoe UI', sans-serif; margin: 0; background: #eceff1; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+        
+        .navbar { background: var(--matrix-dark); color: white; display: flex; padding: 5px 15px; align-items: center; gap: 20px; z-index: 1000; flex-wrap: wrap; }
+        .menu-item { position: relative; cursor: pointer; padding: 10px; font-size: 14px; }
+        .submenu { display: none; position: absolute; background: white; color: #333; min-width: 220px; box-shadow: 0 4px 12px rgba(0,0,0,0.4); top: 40px; border-radius: 4px; border: 1px solid #ccc; z-index: 2000; }
+        .menu-item:hover .submenu { display: block; }
+        .submenu div { padding: 10px; border-bottom: 1px solid #eee; transition: 0.2s; cursor: pointer; }
+        .submenu div:hover { background: #007bff; color: white; }
+
+        .search-bar { background: #b0bec5; padding: 8px 15px; display: none; align-items: center; gap: 10px; border-bottom: 2px solid #78909c; }
+        .search-bar span { font-weight: bold; font-size: 13px; }
+        .btn-nav { cursor: pointer; padding: 5px 12px; border-radius: 4px; border: 1px solid #455a64; background: #eceff1; font-weight: bold; }
+        .btn-nav:hover { background: #fff; }
+
+        .workspace { 
+            display: flex; 
+            flex: 1; 
+            overflow: hidden; 
+            padding: 10px; 
+            gap: 10px; 
+            position: relative;
+        }
+        
+        .panel { 
+            background: white; 
+            border-radius: 8px; 
+            display: flex; 
+            flex-direction: column; 
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1); 
+            overflow: hidden; 
+            position: relative;
+        }
+        
+        /* Panel izquierdo redimensionable */
+        .panel-left {
+            width: 300px;
+            min-width: 200px;
+            max-width: 800px;  /* Aumentado de 600px a 800px para mayor tamaño */
+            transition: width 0.05s ease;
+        }
+        
+        /* Barra de redimensionamiento */
+        .resize-handle {
+            position: absolute;
+            right: -5px;
+            top: 0;
+            width: 10px;
+            height: 100%;
+            cursor: ew-resize;
+            background-color: transparent;
+            z-index: 100;
+            transition: background-color 0.2s;
+        }
+        .resize-handle:hover {
+            background-color: rgba(0, 123, 255, 0.5);
+        }
+        .resize-handle.active {
+            background-color: rgba(0, 123, 255, 0.8);
+        }
+        
+        #binaryView {
+            flex: 1; background: #000; color: var(--matrix-green); font-family: 'Courier New', monospace; 
+            font-size: 13px; padding: 15px; overflow-y: auto; white-space: pre; line-height: 1.4;
+            outline: none;
+        }
+        
+        /* ESTILOS DE CELDAS EDITABLES */
+        .byte { 
+            cursor: text; 
+            padding: 0 2px; 
+            border-radius: 2px; 
+            display: inline-block; 
+            width: 28px; 
+            text-align: center; 
+            outline: none; 
+            border: 1px solid transparent;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+        }
+        .byte:focus { 
+            background: #333; 
+            border: 1px solid var(--matrix-green); 
+            color: #fff; 
+            outline: none;
+        }
+        .byte:hover {
+            background: #222;
+        }
+        .byte.readonly {
+            cursor: default;
+            opacity: 0.8;
+        }
+        .byte.readonly:hover {
+            background: transparent;
+        }
+        .modified { color: yellow !important; font-weight: bold; text-decoration: underline; }
+        .match { background: var(--highlight-red) !important; color: white !important; font-weight: bold; }
+        .target-byte { background: #00ffff !important; color: black !important; }
+
+        .status-bar { background: #263238; color: #90a4ae; padding: 5px 15px; font-size: 12px; display: flex; justify-content: space-between; }
+        .propiedades-panel {
+            font-size: 12px;
+            background: #f8f9fa;
+            padding: 12px;
+            border-radius: 6px;
+            border-left: 4px solid #007bff;
+            margin-top: 10px;
+            word-break: break-word;
+        }
+        .propiedades-panel h4 { margin: 0 0 8px 0; color: #007bff; font-size: 13px; }
+        .metadata-table { font-size: 11px; width: 100%; }
+        .metadata-table td { padding: 4px 0; border-bottom: 1px solid #e0e0e0; }
+        .metadata-table td:first-child { font-weight: bold; width: 40%; color: #555; }
+        
+        .real-time-badge {
+            background: #007bff;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            cursor: pointer;
+        }
+        .real-time-badge.on { background: #28a745; }
+        
+        .img-container {
+            cursor: crosshair;
+            text-align: center;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            width: 100%;
+            overflow: hidden;
+        }
+        
+        #imgPreview {
+            max-width: 100%;
+            width: auto;
+            height: auto;
+            object-fit: contain;
+            transition: width 0.1s ease;
+            display: block;
+            margin: 0 auto;
+        }
+        
+        .panel-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 15px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="navbar">
+        <div style="font-weight: bold; color: var(--matrix-green); letter-spacing: 1px;">MATRIX SUITE CRIOLLO v7.0</div>
+        
+        <div class="menu-item">📁 Archivo
+            <div class="submenu">
+                <div onclick="document.getElementById('fileInput').click()">Abrir Archivo...</div>
+                <div onclick="exportarArchivo()">Guardar Cambios (Exportar)</div>
+            </div>
+        </div>
+
+        <div class="menu-item">🔍 Búsqueda
+            <div class="submenu">
+                <div onclick="prepararBusqueda('text', false)">Texto (Ignorar Mayúsculas)</div>
+                <div onclick="prepararBusqueda('text', true)">Texto (Exacta/Case Sensitive)</div>
+                <div onclick="prepararBusqueda('hex')">Hexadecimal (ej: 42 4D)</div>
+                <div onclick="irAOffset()">Ir a Offset (Decimal)...</div>
+            </div>
+        </div>
+
+        <div class="menu-item">🛠️ Herramientas
+            <div class="submenu">
+                <div onclick="calcularEstadisticas()">Estadísticas (Entropía)</div>
+                <div onclick="clonarFragmento()">Clonar Fragmento</div>
+                <div onclick="resetEdiciones()">Limpiar Ediciones</div>
+                <div onclick="mostrarPropiedadesArchivo()">📄 Propiedades del Archivo</div>
+                <div onclick="mostrarMetadatos()">🏷️ Metadatos (EXIF)</div>
+            </div>
+        </div>
+
+        <div class="menu-item">🎨 Formato
+            <div class="submenu">
+                <div onclick="cambiarFormatoVisualizacion('hex')">Hexadecimal (Hex)</div>
+                <div onclick="cambiarFormatoVisualizacion('bin')">Binario (8 bits)</div>
+                <div onclick="cambiarFormatoVisualizacion('dec')">Decimal (0-255)</div>
+            </div>
+        </div>
+        
+        <div class="real-time-badge" id="liveStatus" onclick="toggleRealTime()">⚡ LIVE: OFF</div>
+    </div>
+
+    <div id="searchNav" class="search-bar">
+        <span id="searchInfo">BUSCANDO...</span>
+        <span id="matchCount">0 de 0</span>
+        <button class="btn-nav" onclick="navegarResultados(-1)">◀ Ant.</button>
+        <button class="btn-nav" onclick="navegarResultados(1)">Sig. ▶</button>
+        <button class="btn-nav" onclick="cerrarBusqueda()" style="background:#ffcdd2; color:#b71c1c; border-color:#ef9a9a;">Cerrar</button>
+    </div>
+
+    <input type="file" id="fileInput" style="display: none;" onchange="cargarArchivo(this)">
+
+    <div class="workspace">
+        <div class="panel panel-left" id="leftPanel" style="position: relative;">
+            <div class="panel-content">
+                <div id="fileTitle" style="font-weight: bold; color: #007bff; word-break: break-all;">Sin archivo</div>
+                <hr>
+                <div class="img-container" onclick="mapearPixelAByte(event)">
+                    <img id="imgPreview" style="max-width:100%; display:none; border:1px solid #ccc; border-radius: 4px;">
+                </div>
+                <div id="pixelCoords" style="font-size: 11px; color: #666; margin-top:10px;">Haz clic en la imagen para saltar al byte</div>
+                <div id="statsPanel" style="font-size: 12px; margin-top: 15px; background:#f8f9fa; padding:10px; border-radius:4px;"></div>
+                <div id="propiedadesContainer" style="margin-top: 15px;"></div>
+            </div>
+            <div class="resize-handle" id="resizeHandle"></div>
+        </div>
+
+        <div class="panel" style="flex: 1;">
+            <div id="binaryView">Selecciona 'Archivo > Abrir' para iniciar el análisis bit a bit.</div>
+            <button id="btnMas" style="background: #111; color: #0f0; border: none; padding: 10px; cursor: pointer; display:none" onclick="cargarBloque()">▼ Cargar más contenido ▼</button>
+        </div>
+    </div>
+
+    <div class="status-bar">
+        <span id="posInfo">Editor Listo | LIVE: OFF - Edición bloqueada</span>
+        <span id="fileSizeInfo">Bytes: 0</span>
+    </div>
+
+    <script>
+        let rawData = null;
+        let edits = {};
+        let cursor = 0;
+        let coincidencias = [];
+        let indexMatchActual = -1;
+        let queryLen = 0;
+        const PAGE_SIZE = 2048;
+
+        let currentFileObj = null;
+        let currentFileName = "";
+        let currentDisplayMode = 'hex';
+        let realTimeEnabled = false;
+        
+        // Variables para imagen BMP
+        let imgW = 0, imgH = 0, dataOffset = 0, bitDepth = 0;
+        
+        // ============ REDIMENSIONAMIENTO DEL PANEL ============
+        function initResize() {
+            const leftPanel = document.getElementById('leftPanel');
+            const resizeHandle = document.getElementById('resizeHandle');
+            let startX = 0;
+            let startWidth = 0;
+            let isResizing = false;
+            
+            resizeHandle.addEventListener('mousedown', function(e) {
+                e.preventDefault();
+                isResizing = true;
+                startX = e.clientX;
+                startWidth = leftPanel.offsetWidth;
+                resizeHandle.classList.add('active');
+                document.body.style.cursor = 'ew-resize';
+                document.body.style.userSelect = 'none';
+            });
+            
+            document.addEventListener('mousemove', function(e) {
+                if (!isResizing) return;
+                const deltaX = e.clientX - startX;
+                let newWidth = startWidth + deltaX;
+                // Limitar el ancho mínimo y máximo (ahora hasta 800px)
+                newWidth = Math.max(200, Math.min(800, newWidth));
+                leftPanel.style.width = newWidth + 'px';
+            });
+            
+            document.addEventListener('mouseup', function(e) {
+                if (isResizing) {
+                    isResizing = false;
+                    resizeHandle.classList.remove('active');
+                    document.body.style.cursor = '';
+                    document.body.style.userSelect = '';
+                }
+            });
+        }
+        
+        function getByteValue(offset) {
+            return edits[offset] !== undefined ? edits[offset] : rawData[offset];
+        }
+        
+        function formatByteValue(val) {
+            if (currentDisplayMode === 'hex') return val.toString(16).toUpperCase().padStart(2, '0');
+            if (currentDisplayMode === 'bin') return val.toString(2).padStart(8, '0');
+            return val.toString(10).padStart(3, ' ');
+        }
+        
+        function updateByteVisual(offset) {
+            const span = document.getElementById(`byte-${offset}`);
+            if (!span) return;
+            const val = getByteValue(offset);
+            const formatted = formatByteValue(val);
+            span.textContent = formatted;
+            if (edits[offset] !== undefined) {
+                span.classList.add('modified');
+            } else {
+                span.classList.remove('modified');
+            }
+            actualizarVistaImagen();
+        }
+        
+        function actualizarVistaImagen() {
+            if (!rawData) return;
+            if (currentFileObj && currentFileObj.type.startsWith('image/')) {
+                const nuevoBlob = new Blob([getModifiedData()], { type: currentFileObj.type });
+                const imgPreview = document.getElementById('imgPreview');
+                if (imgPreview.src && imgPreview.src.startsWith('blob:')) URL.revokeObjectURL(imgPreview.src);
+                imgPreview.src = URL.createObjectURL(nuevoBlob);
+            }
+        }
+        
+        function getModifiedData() {
+            const nuevoData = new Uint8Array(rawData);
+            for (let i in edits) {
+                nuevoData[parseInt(i)] = edits[i];
+            }
+            return nuevoData;
+        }
+        
+        function refreshVisor() {
+            if (!rawData) return;
+            const oldActive = document.querySelector('.target-byte');
+            const oldOffset = oldActive ? parseInt(oldActive.id.split('-')[1]) : -1;
+            document.getElementById('binaryView').innerHTML = "";
+            cursor = 0;
+            cargarBloque();
+            if (oldOffset !== -1) setTimeout(() => enfocarByte(oldOffset), 50);
+        }
+        
+        function cargarBloque(sM = -1, eM = -1) {
+            if (!rawData) return;
+            const visor = document.getElementById('binaryView');
+            const end = Math.min(cursor + PAGE_SIZE, rawData.length);
+            let html = "";
+            for (let i = cursor; i < end; i += 16) {
+                let offHex = i.toString(16).toUpperCase().padStart(8, '0');
+                let hexPart = "";
+                let asciiPart = "";
+                for (let j = 0; j < 16; j++) {
+                    const idx = i + j;
+                    if (idx < rawData.length) {
+                        const val = getByteValue(idx);
+                        const isMatch = (idx >= sM && idx < eM);
+                        const isModified = edits[idx] !== undefined;
+                        const formatted = formatByteValue(val);
+                        const char = (val >= 32 && val <= 126) ? String.fromCharCode(val) : ".";
+                        let classNames = `byte ${isModified ? 'modified' : ''} ${isMatch ? 'match' : ''}`;
+                        const editableAttr = realTimeEnabled ? 'contenteditable="true"' : 'contenteditable="false"';
+                        const readonlyClass = !realTimeEnabled ? 'readonly' : '';
+                        hexPart += `<span id="byte-${idx}" class="${classNames} ${readonlyClass}" ${editableAttr} 
+                                         onkeydown="manejarTeclado(event, ${idx})" 
+                                         onblur="confirmarEdicion(event, ${idx})"
+                                         style="display:inline-block; min-width:30px; text-align:center;">${formatted}</span> `;
+                        asciiPart += `<span class="${classNames} ${readonlyClass}" style="display:inline-block; min-width:15px; text-align:center;">${char}</span>`;
+                    } else {
+                        hexPart += `      `;
+                        asciiPart += ` `;
+                    }
+                }
+                html += `${offHex}  ${hexPart} | ${asciiPart}\n`;
+            }
+            if (cursor === 0) visor.innerHTML = html;
+            else visor.innerHTML += html;
+            cursor = end;
+            document.getElementById('btnMas').style.display = cursor < rawData.length ? 'block' : 'none';
+        }
+        
+        function manejarTeclado(e, idx) {
+            if (!realTimeEnabled) {
+                e.preventDefault();
+                return;
+            }
+            
+            if (e.key === "ArrowRight") { e.preventDefault(); enfocarByte(idx + 1); }
+            if (e.key === "ArrowLeft") { e.preventDefault(); enfocarByte(idx - 1); }
+            if (e.key === "ArrowDown") { e.preventDefault(); enfocarByte(idx + 16); }
+            if (e.key === "ArrowUp") { e.preventDefault(); enfocarByte(idx - 16); }
+            
+            if (e.key.length === 1 && !/[0-9a-fA-F]/.test(e.key) && e.key !== 'Enter' && e.key !== 'Tab') {
+                e.preventDefault();
+            }
+            
+            if (e.target.innerText.length >= 2 && e.key.length === 1 && window.getSelection().toString() === "") {
+                e.preventDefault();
+            }
+        }
+        
+        function enfocarByte(idx) {
+            if (!rawData) return;
+            if (idx < 0) idx = 0;
+            if (idx >= rawData.length) idx = rawData.length - 1;
+            
+            while (idx >= cursor && cursor < rawData.length) {
+                cargarBloque();
+            }
+            const el = document.getElementById(`byte-${idx}`);
+            if (el) {
+                el.focus();
+                const range = document.createRange();
+                range.selectNodeContents(el);
+                const sel = window.getSelection();
+                sel.removeAllRanges();
+                sel.addRange(range);
+                document.getElementById('posInfo').innerHTML = `📍 Offset: ${idx} (decimal) / 0x${idx.toString(16).toUpperCase()} | Editando byte...`;
+                
+                document.querySelectorAll('.target-byte').forEach(b => b.classList.remove('target-byte'));
+                el.classList.add('target-byte');
+            }
+        }
+        
+        function confirmarEdicion(e, idx) {
+            if (!realTimeEnabled) {
+                const original = getByteValue(idx);
+                e.target.innerText = formatByteValue(original);
+                return;
+            }
+            
+            let valHex = e.target.innerText.trim().toUpperCase();
+            if (/^[0-9A-F]{1,2}$/.test(valHex)) {
+                if (valHex.length === 1) valHex = '0' + valHex;
+                const val = parseInt(valHex, 16);
+                if (!isNaN(val) && val >= 0 && val <= 255) {
+                    if (val !== getByteValue(idx)) {
+                        edits[idx] = val;
+                        e.target.classList.add('modified');
+                        document.getElementById('posInfo').innerHTML = `✅ Byte en offset ${idx} modificado a ${valHex}`;
+                        if (document.getElementById('statsPanel').innerHTML.includes('Ediciones')) {
+                            calcularEstadisticas();
+                        }
+                    }
+                    e.target.innerText = formatByteValue(val);
+                    actualizarVistaImagen();
+                } else {
+                    revertirByte(e, idx);
+                }
+            } else {
+                revertirByte(e, idx);
+            }
+        }
+        
+        function revertirByte(e, idx) {
+            const original = getByteValue(idx);
+            e.target.innerText = formatByteValue(original);
+        }
+        
+        function mapearPixelAByte(event) {
+            if (!rawData || imgW === 0) return;
+            const img = document.getElementById('imgPreview');
+            if (!img || img.style.display === 'none') return;
+            const rect = img.getBoundingClientRect();
+            const x = Math.floor((event.clientX - rect.left) * (imgW / rect.width));
+            const y = Math.floor((event.clientY - rect.top) * (Math.abs(imgH) / rect.height));
+            const rowSize = Math.floor((bitDepth * imgW + 31) / 32) * 4;
+            const actualY = imgH > 0 ? (imgH - 1 - y) : y;
+            const byteOffset = dataOffset + (actualY * rowSize) + Math.floor((x * bitDepth) / 8);
+            
+            enfocarByte(byteOffset);
+        }
+        
+        function toggleRealTime() {
+            realTimeEnabled = !realTimeEnabled;
+            const badge = document.getElementById('liveStatus');
+            if (realTimeEnabled) {
+                badge.innerHTML = '⚡ LIVE: ON';
+                badge.classList.add('on');
+                document.getElementById('posInfo').innerHTML = '✅ LIVE ACTIVADO - Puedes editar los bytes';
+                refreshVisor();
+            } else {
+                badge.innerHTML = '⚡ LIVE: OFF';
+                badge.classList.remove('on');
+                document.getElementById('posInfo').innerHTML = '🔒 LIVE DESACTIVADO - Edición bloqueada. Activa LIVE para modificar bytes';
+                refreshVisor();
+            }
+        }
+        
+        function cambiarFormatoVisualizacion(modo) {
+            if (!rawData) { alert("Primero carga un archivo."); return; }
+            currentDisplayMode = modo;
+            refreshVisor();
+            let modoTexto = (modo === 'hex') ? 'HEXADECIMAL' : (modo === 'bin') ? 'BINARIO' : 'DECIMAL';
+            document.getElementById('posInfo').innerHTML = `Formato: ${modoTexto} | ${realTimeEnabled ? 'LIVE ON - Puedes editar' : 'LIVE OFF - Edición bloqueada'}`;
+        }
+        
+        function prepararBusqueda(modo, caseSensitive) {
+            if (!rawData) return alert("Cargue un archivo.");
+            const q = prompt(modo === 'text' ? (caseSensitive ? "Texto EXACTO:" : "Texto (Ignorar Mayúsculas):") : "Hexadecimal (ej: 42 4D):");
+            if (!q) return;
+
+            coincidencias = [];
+            if (modo === 'text') {
+                queryLen = q.length;
+                let dataString = "";
+                for (let b of rawData) dataString += (b >= 32 && b <= 126) ? String.fromCharCode(b) : "\0";
+                let searchStr = caseSensitive ? q : q.toLowerCase();
+                let targetStr = caseSensitive ? dataString : dataString.toLowerCase();
+                let p = targetStr.indexOf(searchStr);
+                while (p !== -1) { coincidencias.push(p); p = targetStr.indexOf(searchStr, p + 1); }
+            } else {
+                const hexClean = q.replace(/\s+/g, '');
+                const pat = [];
+                for (let i = 0; i < hexClean.length; i += 2) {
+                    const byte = parseInt(hexClean.substr(i, 2), 16);
+                    if (isNaN(byte)) return alert("Patrón hexadecimal inválido");
+                    pat.push(byte);
+                }
+                queryLen = pat.length;
+                for (let i = 0; i <= rawData.length - queryLen; i++) {
+                    let m = true;
+                    for (let j = 0; j < queryLen; j++) if (getByteValue(i+j) !== pat[j]) { m = false; break; }
+                    if (m) coincidencias.push(i);
+                }
+            }
+
+            if (coincidencias.length > 0) {
+                document.getElementById('searchNav').style.display = 'flex';
+                let modeDesc = modo === 'text' ? `TEXTO ${caseSensitive?'(Sensible)':'(Insensible)'}` : 'HEXADECIMAL';
+                document.getElementById('searchInfo').innerHTML = `BUSCAR: ${modeDesc}`;
+                indexMatchActual = 0;
+                irAMatch(0);
+            } else { alert("No se encontraron resultados."); }
+        }
+        
+        function navegarResultados(dir) {
+            if (!coincidencias.length) return;
+            indexMatchActual = (indexMatchActual + dir + coincidencias.length) % coincidencias.length;
+            irAMatch(indexMatchActual);
+        }
+        
+        function irAMatch(idx) {
+            if (!coincidencias.length) return;
+            const start = coincidencias[idx];
+            const end = start + queryLen;
+            document.getElementById('matchCount').innerText = `${idx + 1} de ${coincidencias.length}`;
+            document.getElementById('binaryView').innerHTML = `<div style="background:#500; color:white; padding:5px">>>> POSICIÓN: 0x${start.toString(16).toUpperCase()} (${start} decimal)</div>\n`;
+            cursor = Math.floor(start / 16) * 16;
+            cargarBloque(start, end);
+            setTimeout(() => enfocarByte(start), 100);
+        }
+        
+        function cerrarBusqueda() {
+            document.getElementById('searchNav').style.display = 'none';
+            coincidencias = [];
+            indexMatchActual = -1;
+            queryLen = 0;
+            refreshVisor();
+        }
+        
+        async function extraerMetadatos() {
+            if (!rawData || !currentFileObj) throw new Error("No hay archivo");
+            const metadatos = {};
+            metadatos['Nombre archivo'] = currentFileName;
+            metadatos['Tipo MIME'] = currentFileObj.type || "Desconocido";
+            metadatos['Tamaño'] = `${(rawData.length / 1024).toFixed(2)} KB (${rawData.length.toLocaleString()} bytes)`;
+            metadatos['Última modificación'] = currentFileObj.lastModified ? new Date(currentFileObj.lastModified).toLocaleString() : "No disponible";
+            const header = rawData.slice(0, 20);
+            const magic = Array.from(header.slice(0, 8)).map(b => b.toString(16).padStart(2,'0')).join(' ');
+            metadatos['Magic bytes'] = magic.toUpperCase();
+            let formato = "Desconocido";
+            if (header[0] === 0xFF && header[1] === 0xD8) formato = "JPEG";
+            else if (header[0] === 0x89 && header[1] === 0x50 && header[2] === 0x4E && header[3] === 0x47) formato = "PNG";
+            else if (header[0] === 0x47 && header[1] === 0x49 && header[2] === 0x46) formato = "GIF";
+            else if (header[0] === 0x42 && header[1] === 0x4D) formato = "BMP";
+            metadatos['Formato detectado'] = formato;
+            if (currentFileObj.type.startsWith('image/')) {
+                try {
+                    const imgUrl = URL.createObjectURL(currentFileObj);
+                    const imgInfo = await cargarDimensionesImagen(imgUrl);
+                    URL.revokeObjectURL(imgUrl);
+                    metadatos['Ancho (px)'] = imgInfo.width;
+                    metadatos['Alto (px)'] = imgInfo.height;
+                } catch(e) {}
+            }
+            let freq = new Array(256).fill(0);
+            for (let i = 0; i < rawData.length; i++) freq[rawData[i]]++;
+            let entropy = 0;
+            for (let i = 0; i < 256; i++) if (freq[i] > 0) { let p = freq[i]/rawData.length; entropy -= p * Math.log2(p); }
+            metadatos['Entropía'] = entropy.toFixed(4);
+            metadatos['Ediciones'] = Object.keys(edits).length;
+            return metadatos;
+        }
+        
+        function cargarDimensionesImagen(url) {
+            return new Promise((resolve, reject) => { const img = new Image(); img.onload = () => resolve({ width: img.width, height: img.height }); img.onerror = reject; img.src = url; });
+        }
+        
+        async function mostrarMetadatos() {
+            if (!rawData) { alert("Cargue archivo"); return; }
+            document.getElementById('statsPanel').innerHTML = "";
+            try {
+                const meta = await extraerMetadatos();
+                let html = `<div class="propiedades-panel"><h4>🏷️ METADATOS</h4><table class="metadata-table">`;
+                for (let [k,v] of Object.entries(meta)) html += `<tr><td>${escapeHtml(k)}:</td><td>${escapeHtml(String(v))}${'</td></tr>'}`;
+                html += `</table></div>`;
+                document.getElementById('propiedadesContainer').innerHTML = html;
+            } catch(e) { document.getElementById('propiedadesContainer').innerHTML = `<div class="propiedades-panel">Error: ${e.message}</div>`; }
+        }
+        
+        async function mostrarPropiedadesArchivo() {
+            if (!rawData) { alert("Cargue archivo"); return; }
+            const bytes = rawData.length;
+            const kb = (bytes/1024).toFixed(2);
+            let mime = currentFileObj.type || "application/octet-stream";
+            let html = `<div class="propiedades-panel"><h4>📋 PROPIEDADES</h4>
+                        <strong>Tipo:</strong> ${escapeHtml(mime)}<br>
+                        <strong>Tamaño:</strong> ${kb} KB (${bytes.toLocaleString()} bytes)<br>
+                        <strong>Modificado:</strong> ${currentFileObj.lastModified ? new Date(currentFileObj.lastModified).toLocaleString() : "N/D"}<br>
+                        <strong>Ediciones:</strong> ${Object.keys(edits).length} bytes<br></div>`;
+            document.getElementById('propiedadesContainer').innerHTML = html;
+            document.getElementById('statsPanel').innerHTML = "";
+        }
+        
+        function escapeHtml(str) { return String(str).replace(/[&<>]/g, m => m === '&' ? '&amp;' : (m === '<' ? '&lt;' : '&gt;')); }
+        
+        function cargarArchivo(input) {
+            if (!input.files[0]) return;
+            currentFileObj = input.files[0];
+            currentFileName = currentFileObj.name;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                rawData = new Uint8Array(e.target.result);
+                
+                const view = new DataView(rawData.buffer);
+                if (view.getUint16(0) === 0x424D) {
+                    dataOffset = view.getUint32(10, true);
+                    imgW = view.getInt32(18, true);
+                    imgH = view.getInt32(22, true);
+                    bitDepth = view.getUint16(28, true);
+                }
+                
+                edits = {}; 
+                cerrarBusqueda();
+                document.getElementById('fileTitle').innerText = currentFileName;
+                document.getElementById('fileSizeInfo').innerText = `Tamaño: ${rawData.length.toLocaleString()} bytes`;
+                document.getElementById('propiedadesContainer').innerHTML = "";
+                document.getElementById('statsPanel').innerHTML = "";
+                
+                if(currentFileObj.type.startsWith('image/')) {
+                    const imgPrev = document.getElementById('imgPreview');
+                    imgPrev.src = URL.createObjectURL(currentFileObj);
+                    imgPrev.style.display = 'block';
+                } else {
+                    document.getElementById('imgPreview').style.display = 'none';
+                }
+                
+                if (realTimeEnabled) {
+                    realTimeEnabled = false;
+                    const badge = document.getElementById('liveStatus');
+                    badge.innerHTML = '⚡ LIVE: OFF';
+                    badge.classList.remove('on');
+                }
+                
+                currentDisplayMode = 'hex';
+                refreshVisor();
+                setTimeout(() => {
+                    if (rawData.length > 0) enfocarByte(0);
+                    document.getElementById('binaryView').focus();
+                }, 100);
+            };
+            reader.readAsArrayBuffer(input.files[0]);
+        }
+        
+        function exportarArchivo() {
+            if (!rawData) return alert("No hay archivo.");
+            const f = getModifiedData();
+            const a = document.createElement("a");
+            a.href = URL.createObjectURL(new Blob([f]));
+            a.download = currentFileName ? `modificado_${currentFileName}` : "output_matrix.bin";
+            a.click();
+        }
+        
+        function calcularEstadisticas() {
+            if (!rawData) return;
+            let nulos = 0;
+            for (let i = 0; i < rawData.length; i++) if (getByteValue(i) === 0) nulos++;
+            document.getElementById('propiedadesContainer').innerHTML = "";
+            document.getElementById('statsPanel').innerHTML = `<b>📊 ESTADÍSTICAS</b><br>Nulobytes: ${nulos}<br>% Vacío: ${((nulos/rawData.length)*100).toFixed(2)}%<br>Ediciones: ${Object.keys(edits).length}<br>Formato: ${currentDisplayMode.toUpperCase()}`;
+        }
+        
+        function irAOffset() { 
+            let posicion = prompt("Ir a posición (Decimal):\n\nIngrese el número de byte al que desea saltar (0 a " + (rawData ? rawData.length - 1 : 0) + "):");
+            if(posicion !== null && posicion !== ""){ 
+                let idx = parseInt(posicion, 10); 
+                if(!isNaN(idx) && idx >= 0 && rawData && idx < rawData.length) {
+                    enfocarByte(idx); 
+                } else if(rawData && (idx < 0 || idx >= rawData.length)) {
+                    alert("Posición inválida. Debe estar entre 0 y " + (rawData.length - 1));
+                } else {
+                    alert("Por favor ingrese un número válido");
+                }
+            } 
+        }
+        
+        function clonarFragmento() {
+            if (!realTimeEnabled) {
+                alert("Primero activa LIVE para poder clonar fragmentos");
+                return;
+            }
+            let s = parseInt(prompt("Inicio fragmento (Hex):"),16);
+            let sz = parseInt(prompt("Tamaño (Bytes):"),10);
+            let d = parseInt(prompt("Destino (Hex):"),16);
+            if(!isNaN(s) && !isNaN(sz) && !isNaN(d)){
+                if(s+sz > rawData.length) return alert("Origen fuera de rango");
+                if(d+sz > rawData.length) return alert("Destino excede tamaño");
+                for(let i=0;i<sz;i++) edits[d+i] = rawData[s+i];
+                alert("Fragmento copiado.");
+                refreshVisor();
+                actualizarVistaImagen();
+            }
+        }
+        
+        function resetEdiciones() { 
+            if (!realTimeEnabled) {
+                alert("Primero activa LIVE para poder limpiar ediciones");
+                return;
+            }
+            if(confirm("¿Restaurar archivo original?")){ 
+                edits={}; 
+                refreshVisor(); 
+                actualizarVistaImagen();
+            } 
+        }
+        
+        window.addEventListener('DOMContentLoaded', initResize);
+        
+        window.cargarBloque = cargarBloque;
+        window.exportarArchivo = exportarArchivo;
+        window.calcularEstadisticas = calcularEstadisticas;
+        window.irAOffset = irAOffset;
+        window.clonarFragmento = clonarFragmento;
+        window.cerrarBusqueda = cerrarBusqueda;
+        window.resetEdiciones = resetEdiciones;
+        window.prepararBusqueda = prepararBusqueda;
+        window.navegarResultados = navegarResultados;
+        window.cambiarFormatoVisualizacion = cambiarFormatoVisualizacion;
+        window.cargarArchivo = cargarArchivo;
+        window.mostrarPropiedadesArchivo = mostrarPropiedadesArchivo;
+        window.mostrarMetadatos = mostrarMetadatos;
+        window.manejarTeclado = manejarTeclado;
+        window.confirmarEdicion = confirmarEdicion;
+        window.enfocarByte = enfocarByte;
+        window.mapearPixelAByte = mapearPixelAByte;
+        window.toggleRealTime = toggleRealTime;
+    </script>
+</body>
+</html>
